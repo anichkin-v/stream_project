@@ -1,14 +1,14 @@
 [Unit]
 Description=Kids Stream FFmpeg conversion worker
-After=network.target php8.3-fpm.service
-Wants=php8.3-fpm.service
+After=network.target php8.4-fpm.service
+Wants=php8.4-fpm.service
 
 [Service]
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/var/www/stream_project
-ExecStart=/usr/bin/php /var/www/stream_project/bin/worker.php
+WorkingDirectory=/home/web_deploy/web/public/stream
+ExecStart=/usr/bin/php /home/web_deploy/web/public/stream/bin/worker.php
 Restart=always
 RestartSec=3
 Nice=10
@@ -17,8 +17,8 @@ UMask=0027
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/www/stream_project/storage /var/www/stream_project/public/media
+ProtectHome=false
+ReadWritePaths=/home/web_deploy/web/public/stream/storage /home/web_deploy/web/public/stream/public/media
 
 [Install]
 WantedBy=multi-user.target
