@@ -12,8 +12,8 @@ foreach ([$config['paths']['uploads'], $config['paths']['hls']] as $directory) {
 
 $pdo = new PDO(
     $config['database']['dsn'],
-    $config['database']['user'],
-    $config['database']['password'],
+    $config['database']['user'] ?? null,
+    $config['database']['password'] ?? null,
     [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -38,10 +38,13 @@ if (PHP_SAPI !== 'cli') {
     session_start();
 }
 
-require __DIR__ . '/functions.php';
-require __DIR__ . '/schema.php';
-require __DIR__ . '/worker.php';
+require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/worker.php';
 
 ensure_schema($pdo);
 
-return [$config, $pdo];
+return [
+    'config' => $config,
+    'pdo' => $pdo,
+];

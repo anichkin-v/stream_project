@@ -55,14 +55,29 @@ chmod o+x /home /home/web_deploy /home/web_deploy/web /home/web_deploy/web/publi
 echo "==> Инициализация базы данных"
 sudo -u "$DEPLOY_USER" php "$PROJECT_DIR/bin/init-db.php"
 
-if sudo -u "$DEPLOY_USER" php -r '
-    [$c,$pdo]=require $argv[1]."/src/bootstrap.php";
-    exit((int)$pdo->query("SELECT COUNT(*) FROM admins")->fetchColumn() > 0 ? 0 : 1);
-' "$PROJECT_DIR" 2>/dev/null; then
+ADMIN_COUNT="$(sudo -u "$DEPLOY_USER" php -r '
+    $app = require $argv[1] . "/src/bootstrap.php";
+    if (!is_array($app) || !(($app["pdo"] ?? null) instanceof PDO)) {
+        fwrite(STDERR, "bootstrap failed\n");
+        exit(2);
+    }
+    echo (int) $app["pdo"]->query("SELECT COUNT(*) FROM admins")->fetchColumn();
+' "$PROJECT_DIR")"
+
+if [[ "$ADMIN_COUNT" -gt 0 ]]; then
     echo "    Администратор уже существует, пропускаю создание."
 else
-    echo "==> Создание администратора «$ADMIN_LOGIN» (введите пароль)"
-    sudo -u "$DEPLOY_USER" php "$PROJECT_DIR/bin/create-admin.php" "$ADMIN_LOGIN"
+    echo "==> Создание администратора «$ADMIN_LOGIN»"
+    if [[ -n "${ADMIN_PASSWORD:-}" ]]; then
+        sudo -u "$DEPLOY_USER" ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+            php "$PROJECT_DIR/bin/create-admin.php" "$ADMIN_LOGIN"
+    else
+        read -r -s -p "Пароль (минимум 10 символов): " ADMIN_PASSWORD_INPUT
+        echo
+        sudo -u "$DEPLOY_USER" ADMIN_PASSWORD="$ADMIN_PASSWORD_INPUT" \
+            php "$PROJECT_DIR/bin/create-admin.php" "$ADMIN_LOGIN"
+        unset ADMIN_PASSWORD_INPUT
+    fi
 fi
 
 echo "==> Установка конфигураций PHP-FPM и Nginx"

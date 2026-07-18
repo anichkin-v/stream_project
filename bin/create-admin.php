@@ -2,18 +2,28 @@
 
 declare(strict_types=1);
 
-[$config, $pdo] = require dirname(__DIR__) . '/src/bootstrap.php';
+['config' => $config, 'pdo' => $pdo] = require dirname(__DIR__) . '/src/bootstrap.php';
 
 $username = trim((string) ($argv[1] ?? ''));
 if ($username === '') {
-    fwrite(STDERR, "Использование: php bin/create-admin.php <логин>\n");
+    fwrite(STDERR, "Использование: php bin/create-admin.php <логин> [пароль]\n");
+    fwrite(STDERR, "Пароль также можно передать через переменную ADMIN_PASSWORD.\n");
     exit(1);
 }
 
-fwrite(STDOUT, 'Пароль: ');
-$password = trim((string) fgets(STDIN));
+$password = (string) ($argv[2] ?? getenv('ADMIN_PASSWORD') ?: '');
+if ($password === '') {
+    fwrite(STDOUT, 'Пароль: ');
+    $password = trim((string) fgets(STDIN));
+}
+
 if (mb_strlen($password) < 10) {
     fwrite(STDERR, "Пароль должен содержать не менее 10 символов.\n");
+    exit(1);
+}
+
+if (!$pdo instanceof PDO) {
+    fwrite(STDERR, "Ошибка: соединение с базой данных не инициализировано.\n");
     exit(1);
 }
 
