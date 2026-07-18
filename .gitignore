@@ -1,0 +1,12 @@
+/storage/database.sqlite
+/storage/database.sqlite-shm
+/storage/database.sqlite-wal
+/storage/uploads/*
+/storage/worker.lock
+/storage/worker.pid
+/storage/worker.log
+/public/media/*
+!/storage/uploads/.gitkeep
+!/public/media/.gitkeep
+/.idea/
+/.DS_Store
