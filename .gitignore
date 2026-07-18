@@ -8,5 +8,6 @@
 /public/media/*
 !/storage/uploads/.gitkeep
 !/public/media/.gitkeep
+/config/stream.apiweb.app.conf
 /.idea/
 /.DS_Store
