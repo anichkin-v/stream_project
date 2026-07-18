@@ -5,7 +5,55 @@ $statusLabels = [
     'ready' => 'Готово',
     'failed' => 'Ошибка',
 ];
-$queuePosition = 0;
+$queuePositions = [];
+$queuedIndex = 0;
+$seriesFolders = [];
+$standaloneVideos = [];
+foreach ($videos as $contentVideo) {
+    if ($contentVideo['status'] === 'queued') {
+        $queuePositions[(int) $contentVideo['id']] = ++$queuedIndex;
+    }
+    if ($contentVideo['series_id'] === null) {
+        $standaloneVideos[] = $contentVideo;
+        continue;
+    }
+
+    $seriesId = (int) $contentVideo['series_id'];
+    if (!isset($seriesFolders[$seriesId])) {
+        $seriesFolders[$seriesId] = [
+            'id' => $seriesId,
+            'title' => $contentVideo['series_title'],
+            'description' => $contentVideo['series_description'] ?? '',
+            'seasons' => [],
+            'total' => 0,
+            'ready' => 0,
+        ];
+    }
+    $seasonNumber = (int) $contentVideo['season_number'];
+    if (!isset($seriesFolders[$seriesId]['seasons'][$seasonNumber])) {
+        $seriesFolders[$seriesId]['seasons'][$seasonNumber] = [
+            'title' => $contentVideo['season_title'] ?? '',
+            'description' => $contentVideo['season_description'] ?? '',
+            'episodes' => [],
+        ];
+    }
+    $seriesFolders[$seriesId]['seasons'][$seasonNumber]['episodes'][] = $contentVideo;
+    $seriesFolders[$seriesId]['total']++;
+    if ($contentVideo['status'] === 'ready') {
+        $seriesFolders[$seriesId]['ready']++;
+    }
+}
+foreach ($seriesFolders as &$seriesFolder) {
+    ksort($seriesFolder['seasons'], SORT_NUMERIC);
+    foreach ($seriesFolder['seasons'] as &$season) {
+        usort($season['episodes'], static function (array $left, array $right): int {
+            return [(int) $left['episode_number'], (int) $left['id']]
+                <=> [(int) $right['episode_number'], (int) $right['id']];
+        });
+    }
+    unset($season);
+}
+unset($seriesFolder);
 ?>
 <div class="admin-heading">
     <div>
@@ -117,82 +165,109 @@ $queuePosition = 0;
                                 : 'Проверьте systemd-сервис stream-worker.' ?>
                         </div>
                     <?php endif; ?>
-                    <div class="admin-list">
-                        <?php foreach ($videos as $video): ?>
-                            <?php
-                            if ($video['status'] === 'queued') {
-                                $queuePosition++;
-                            }
-                            $videoQualities = json_decode((string) ($video['qualities_json'] ?? '[]'), true) ?: [];
-                            ?>
-                            <article class="admin-video" data-video-id="<?= (int) $video['id'] ?>"
-                                     data-current-status="<?= e($video['status']) ?>">
-                                <div class="admin-video-main">
-                                    <div class="admin-video-title-row">
-                                        <h3><?= e($video['title']) ?></h3>
-                                        <?php foreach ($videoQualities as $quality): ?>
-                                            <span class="quality-chip"><?= e($quality['label']) ?></span>
-                                        <?php endforeach; ?>
-                                    </div>
-                                    <?php if ($video['series_title']): ?>
-                                        <p class="episode-meta">
-                                            <?= e($video['series_title']) ?> ·
-                                            S<?= (int) $video['season_number'] ?>
-                                            E<?= (int) $video['episode_number'] ?>
-                                        </p>
-                                    <?php endif; ?>
-                                    <p class="muted"><?= e($video['original_name']) ?> · <?= e($video['created_at']) ?></p>
-                                    <div class="conversion-info">
-                                        <div class="progress-track" aria-label="Прогресс конвертации">
-                                            <span style="width: <?= (int) $video['progress'] ?>%"></span>
-                                        </div>
-                                        <p class="progress-text">
-                                            <?php if ($video['status'] === 'queued'): ?>
-                                                Ожидает запуска · позиция <?= $queuePosition ?>
-                                            <?php elseif ($video['status'] === 'processing'): ?>
-                                                <?= e($video['processing_stage'] ?: 'Конвертация') ?> ·
-                                                <strong><?= (int) $video['progress'] ?>%</strong>
-                                            <?php elseif ($video['status'] === 'ready'): ?>
-                                                Адаптивный HLS готов · <strong>100%</strong>
-                                            <?php else: ?>
-                                                Обработка остановлена
-                                            <?php endif; ?>
-                                        </p>
-                                    </div>
-                                    <?php if ($video['error_message']): ?>
-                                        <details class="error-details">
-                                            <summary>Ошибка FFmpeg</summary>
-                                            <pre><?= e($video['error_message']) ?></pre>
-                                        </details>
-                                    <?php endif; ?>
-                                </div>
-                                <div class="admin-actions">
-                                    <span class="status status-<?= e($video['status']) ?>" data-status-badge>
-                                        <?= e($statusLabels[$video['status']] ?? $video['status']) ?>
+                    <div class="content-tree">
+                        <?php foreach ($seriesFolders as $seriesFolder): ?>
+                            <details class="content-folder series-folder" open>
+                                <summary>
+                                    <span class="folder-icon" aria-hidden="true">▰</span>
+                                    <span class="folder-heading">
+                                        <strong><?= e($seriesFolder['title']) ?></strong>
+                                        <small>
+                                            <?= count($seriesFolder['seasons']) ?> сез. ·
+                                            <?= (int) $seriesFolder['total'] ?> сер. ·
+                                            готово <?= (int) $seriesFolder['ready'] ?>/<?= (int) $seriesFolder['total'] ?>
+                                        </small>
                                     </span>
-                                    <?php if ($video['status'] === 'ready'): ?>
-                                        <a class="button button-secondary" href="/watch/<?= (int) $video['id'] ?>">Открыть</a>
-                                        <form method="post" action="/admin/videos/<?= (int) $video['id'] ?>/reprocess"
-                                              onsubmit="return confirm('Перекодировать видео в адаптивные качества?')">
-                                            <input type="hidden" name="_token" value="<?= e(csrf_token()) ?>">
-                                            <button class="button button-secondary" type="submit">Перекодировать</button>
-                                        </form>
-                                    <?php elseif ($video['status'] === 'failed'): ?>
-                                        <form method="post" action="/admin/videos/<?= (int) $video['id'] ?>/retry">
-                                            <input type="hidden" name="_token" value="<?= e(csrf_token()) ?>">
-                                            <button class="button button-secondary" type="submit">Повторить</button>
-                                        </form>
-                                    <?php endif; ?>
-                                    <?php if ($video['status'] !== 'processing'): ?>
-                                        <form method="post" action="/admin/videos/<?= (int) $video['id'] ?>/delete"
-                                              onsubmit="return confirm('Удалить видео и все его файлы?')">
-                                            <input type="hidden" name="_token" value="<?= e(csrf_token()) ?>">
-                                            <button class="button button-danger" type="submit">Удалить</button>
-                                        </form>
-                                    <?php endif; ?>
+                                    <span class="folder-chevron" aria-hidden="true">⌄</span>
+                                </summary>
+                                <details class="metadata-editor metadata-editor-series">
+                                    <summary>Редактировать сериал</summary>
+                                    <form method="post"
+                                          action="/admin/series/<?= (int) $seriesFolder['id'] ?>">
+                                        <input type="hidden" name="_token" value="<?= e(csrf_token()) ?>">
+                                        <div class="metadata-form-grid">
+                                            <label>
+                                                Название сериала
+                                                <input name="title" maxlength="180" required
+                                                       value="<?= e($seriesFolder['title']) ?>">
+                                            </label>
+                                            <label class="metadata-description">
+                                                Описание
+                                                <textarea name="description" rows="3"
+                                                          maxlength="5000"><?= e($seriesFolder['description']) ?></textarea>
+                                            </label>
+                                        </div>
+                                        <button class="button" type="submit">Сохранить сериал</button>
+                                    </form>
+                                </details>
+                                <div class="series-seasons">
+                                    <?php foreach ($seriesFolder['seasons'] as $seasonNumber => $season): ?>
+                                        <details class="content-folder season-folder" open>
+                                            <summary>
+                                                <span class="folder-icon folder-icon-small" aria-hidden="true">▰</span>
+                                                <span class="folder-heading">
+                                                    <strong>
+                                                        Сезон <?= (int) $seasonNumber ?>
+                                                        <?= $season['title'] !== '' ? ' · ' . e($season['title']) : '' ?>
+                                                    </strong>
+                                                    <small><?= count($season['episodes']) ?> сер.</small>
+                                                </span>
+                                                <span class="folder-chevron" aria-hidden="true">⌄</span>
+                                            </summary>
+                                            <details class="metadata-editor metadata-editor-season">
+                                                <summary>Редактировать сезон</summary>
+                                                <form method="post"
+                                                      action="/admin/series/<?= (int) $seriesFolder['id'] ?>/seasons/<?= (int) $seasonNumber ?>">
+                                                    <input type="hidden" name="_token"
+                                                           value="<?= e(csrf_token()) ?>">
+                                                    <div class="metadata-form-grid metadata-form-grid-season">
+                                                        <label>
+                                                            Номер сезона
+                                                            <input name="season_number" type="number" min="1" required
+                                                                   value="<?= (int) $seasonNumber ?>">
+                                                        </label>
+                                                        <label>
+                                                            Название сезона
+                                                            <input name="title" maxlength="180"
+                                                                   placeholder="Необязательно"
+                                                                   value="<?= e($season['title']) ?>">
+                                                        </label>
+                                                        <label class="metadata-description">
+                                                            Описание
+                                                            <textarea name="description" rows="3"
+                                                                      maxlength="5000"><?= e($season['description']) ?></textarea>
+                                                        </label>
+                                                    </div>
+                                                    <button class="button" type="submit">Сохранить сезон</button>
+                                                </form>
+                                            </details>
+                                            <div class="season-episodes">
+                                                <?php foreach ($season['episodes'] as $video): ?>
+                                                    <?php require __DIR__ . '/admin-video-row.php'; ?>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        </details>
+                                    <?php endforeach; ?>
                                 </div>
-                            </article>
+                            </details>
                         <?php endforeach; ?>
+
+                        <?php if ($standaloneVideos): ?>
+                            <section class="standalone-content">
+                                <div class="standalone-heading">
+                                    <span class="folder-icon" aria-hidden="true">▰</span>
+                                    <div>
+                                        <strong>Отдельные видео</strong>
+                                        <small><?= count($standaloneVideos) ?> видео</small>
+                                    </div>
+                                </div>
+                                <div class="admin-list">
+                                    <?php foreach ($standaloneVideos as $video): ?>
+                                        <?php require __DIR__ . '/admin-video-row.php'; ?>
+                                    <?php endforeach; ?>
+                                </div>
+                            </section>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
             </section>

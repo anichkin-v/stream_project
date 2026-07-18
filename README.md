@@ -47,11 +47,13 @@ sudo PROJECT_DIR=/home/web_deploy/web/public/stream DEPLOY_USER=www-data \
 ```bash
 sudo apt update
 sudo apt install nginx php8.4-fpm php8.4-cli php8.4-sqlite3 php8.4-mbstring \
-  php8.4-curl ffmpeg composer
+  php8.4-curl ffmpeg
 ```
 
 Скопируйте проект в `/home/web_deploy/web/public/stream`, затем подготовьте каталоги и базу.
-Document root — вложенный каталог `public/`, то есть `/home/web_deploy/web/public/stream/public`:
+Document root — вложенный каталог `public/`, то есть `/home/web_deploy/web/public/stream/public`.
+Каталог `vendor/` для локального и сетевого хранилища **не нужен** — AWS SDK
+подключается только при выборе S3 (`INSTALL_S3=1` или ручной `composer install`):
 
 ```bash
 cd /home/web_deploy/web/public/stream
@@ -60,7 +62,9 @@ sudo chown -R www-data:www-data /home/web_deploy/web/public/stream
 sudo chmod -R 775 storage public/media
 # www-data должен иметь право прохода к каталогу проекта в /home:
 sudo chmod o+x /home /home/web_deploy /home/web_deploy/web /home/web_deploy/web/public
-sudo -u www-data composer install --no-dev --optimize-autoloader
+# только если используете Amazon S3:
+# sudo apt install composer
+# sudo -u www-data composer install --no-dev --optimize-autoloader
 sudo -u www-data php bin/init-db.php
 sudo -u www-data php bin/create-admin.php admin
 ```

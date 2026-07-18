@@ -26,7 +26,11 @@ apt-get install -y \
     nginx \
     "php${PHP_VERSION}-fpm" "php${PHP_VERSION}-cli" "php${PHP_VERSION}-sqlite3" \
     "php${PHP_VERSION}-mbstring" "php${PHP_VERSION}-curl" \
-    ffmpeg composer
+    ffmpeg
+# Composer нужен только для Amazon S3 (INSTALL_S3=1).
+if [[ "${INSTALL_S3:-0}" == "1" ]]; then
+    apt-get install -y composer
+fi
 
 echo "==> Синхронизация файлов проекта в $PROJECT_DIR"
 mkdir -p "$PROJECT_DIR"
@@ -38,6 +42,7 @@ if [[ "$SCRIPT_DIR" != "$PROJECT_DIR" ]]; then
             --exclude 'storage/uploads/*' \
             --exclude 'storage/worker.*' \
             --exclude 'public/media/*' \
+            --exclude 'vendor' \
             "$SCRIPT_DIR"/ "$PROJECT_DIR"/
     else
         cp -a "$SCRIPT_DIR"/. "$PROJECT_DIR"/
@@ -46,12 +51,20 @@ fi
 
 echo "==> Подготовка каталогов и прав"
 mkdir -p "$PROJECT_DIR/storage/uploads" "$PROJECT_DIR/storage/sessions" "$PROJECT_DIR/public/media"
+# Для local/network vendor не нужен — удаляем битый/лишний каталог.
+if [[ "${INSTALL_S3:-0}" != "1" ]]; then
+    rm -rf "$PROJECT_DIR/vendor"
+fi
 chown -R "$DEPLOY_USER:$DEPLOY_GROUP" "$PROJECT_DIR"
 chmod -R 775 "$PROJECT_DIR/storage" "$PROJECT_DIR/public/media"
 
-echo "==> Установка PHP-зависимостей"
-sudo -u "$DEPLOY_USER" env COMPOSER_HOME=/tmp/kidstub-composer \
-    composer install --working-dir="$PROJECT_DIR" --no-dev --optimize-autoloader --no-interaction
+if [[ "${INSTALL_S3:-0}" == "1" ]]; then
+    echo "==> Установка PHP-зависимостей для S3"
+    sudo -u "$DEPLOY_USER" env COMPOSER_HOME=/tmp/kidstub-composer \
+        composer install --working-dir="$PROJECT_DIR" --no-dev --optimize-autoloader --no-interaction
+else
+    echo "==> Composer/vendor пропущены (локальное хранилище). Для S3: INSTALL_S3=1 bash install.sh"
+fi
 
 # Nginx/PHP-FPM (www-data) должны иметь право прохода к каталогу проекта в /home.
 chmod o+x /home /home/web_deploy /home/web_deploy/web /home/web_deploy/web/public 2>/dev/null || true

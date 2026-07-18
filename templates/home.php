@@ -10,7 +10,12 @@
     <div class="hero-visual" aria-hidden="true">
         <div class="hero-orbit orbit-one">★</div>
         <div class="hero-orbit orbit-two">●</div>
-        <div class="hero-play">▶</div>
+        <div class="play-blob hero-play" aria-hidden="true">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path fill="currentColor"
+                      d="M9.2 6.4c0-.9.95-1.45 1.72-.98l8.05 4.9c.8.48.8 1.66 0 2.14l-8.05 4.9c-.77.47-1.72-.08-1.72-.98V6.4z"/>
+            </svg>
+        </div>
     </div>
 </section>
 
@@ -48,7 +53,12 @@
                     <div class="video-preview">
                         <img src="<?= e($video['poster_url']) ?>" alt="" loading="lazy"
                              onerror="this.remove()">
-                        <span class="card-play">▶</span>
+                        <span class="play-blob card-play" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path fill="currentColor"
+                                      d="M9.2 6.4c0-.9.95-1.45 1.72-.98l8.05 4.9c.8.48.8 1.66 0 2.14l-8.05 4.9c-.77.47-1.72-.08-1.72-.98V6.4z"/>
+                            </svg>
+                        </span>
                         <?php if (format_duration((float) $video['duration_seconds']) !== ''): ?>
                             <span class="duration"><?= e(format_duration((float) $video['duration_seconds'])) ?></span>
                         <?php endif; ?>

@@ -39,10 +39,8 @@ set_error_handler(static function (int $severity, string $message, string $file,
     throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
-$composerAutoload = dirname(__DIR__) . '/vendor/autoload.php';
-if (is_file($composerAutoload)) {
-    require_once $composerAutoload;
-}
+// Composer/vendor нужен только для Amazon S3. Локальное и сетевое хранилище
+// работают без vendor — не подключаем autoload на каждом запросе.
 
 $requiredDirectories = [
     $config['paths']['uploads'],

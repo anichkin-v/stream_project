@@ -256,9 +256,7 @@ final class StorageManager
             if ($this->profile['s3_bucket'] === '' || $this->profile['s3_region'] === '') {
                 throw new InvalidArgumentException('Для S3 укажите bucket и регион.');
             }
-            if (!class_exists(\Aws\S3\S3Client::class)) {
-                throw new RuntimeException('AWS SDK не установлен. Выполните composer install.');
-            }
+            $this->ensureAwsSdk();
             return;
         }
 
@@ -279,9 +277,7 @@ final class StorageManager
         if ($this->s3Client !== null) {
             return $this->s3Client;
         }
-        if (!class_exists(\Aws\S3\S3Client::class)) {
-            throw new RuntimeException('AWS SDK не установлен. Выполните composer install.');
-        }
+        $this->ensureAwsSdk();
         if ($this->profile['s3_bucket'] === '') {
             throw new RuntimeException('S3 bucket не настроен.');
         }
@@ -297,6 +293,37 @@ final class StorageManager
         $this->s3Client = new \Aws\S3\S3Client($options);
 
         return $this->s3Client;
+    }
+
+    private function ensureAwsSdk(): void
+    {
+        if (class_exists(\Aws\S3\S3Client::class)) {
+            return;
+        }
+
+        $autoload = $this->config['paths']['root'] . '/vendor/autoload.php';
+        if (!is_file($autoload)) {
+            throw new RuntimeException(
+                'Для S3 нужен AWS SDK. Выполните: composer install --no-dev',
+            );
+        }
+
+        try {
+            require_once $autoload;
+        } catch (Throwable $exception) {
+            throw new RuntimeException(
+                'Каталог vendor повреждён или неполный. Удалите vendor/ и выполните '
+                . 'composer install --no-dev. ' . $exception->getMessage(),
+                0,
+                $exception,
+            );
+        }
+
+        if (!class_exists(\Aws\S3\S3Client::class)) {
+            throw new RuntimeException(
+                'AWS SDK не найден после загрузки Composer. Выполните: composer install --no-dev',
+            );
+        }
     }
 
     private function sourceObjectKey(string $filename): string

@@ -119,6 +119,7 @@ if ($method === 'GET' && preg_match('#^/watch/(\d+)$#', $path, $matches)) {
     $video['media_base_url'] = $videoStorage->publicUrl((string) $video['id']);
     $episodes = [];
     $seasons = [];
+    $previousEpisode = null;
     $nextEpisode = null;
     if ($video['series_id'] !== null) {
         $episodeStatement = $pdo->prepare(
@@ -134,18 +135,103 @@ if ($method === 'GET' && preg_match('#^/watch/(\d+)$#', $path, $matches)) {
         }
         foreach ($episodes as $index => $episode) {
             if ((int) $episode['id'] === (int) $video['id']) {
+                $previousEpisode = $episodes[$index - 1] ?? null;
                 $nextEpisode = $episodes[$index + 1] ?? null;
                 break;
             }
         }
     }
+
+    $showQuality = ($settings['player_show_quality'] ?? '1') === '1';
+    $showVolume = ($settings['player_show_volume'] ?? '1') === '1';
+    $showFullscreen = ($settings['player_show_fullscreen'] ?? '1') === '1';
+    $showNext = ($settings['player_show_next'] ?? '1') === '1';
+    $showPreview = ($settings['player_show_preview'] ?? '1') === '1';
+    $brandName = $settings['player_brand_name'] ?? 'KidsTub';
+
+    $qualities = json_decode((string) ($video['qualities_json'] ?? '[]'), true) ?: [];
+    foreach ($qualities as &$quality) {
+        $quality['source'] = rtrim($video['media_base_url'], '/')
+            . '/' . $quality['label'] . '/index.m3u8';
+    }
+    unset($quality);
+
+    $playerConfig = [
+        'source' => $video['hls_url'],
+        'previewUrl' => $showPreview ? $video['preview_vtt_url'] : null,
+        'qualities' => $qualities,
+        'accentColor' => $settings['player_accent_color'] ?? '#ff4e63',
+        'defaultVolume' => (int) ($settings['player_default_volume'] ?? 80),
+        'seekStep' => (int) ($settings['player_seek_step'] ?? 10),
+        'autoplayNext' => ($settings['player_autoplay_next'] ?? '1') === '1',
+        'nextDelay' => (int) ($settings['player_next_delay'] ?? 5),
+        'previousUrl' => $showNext && $previousEpisode ? '/watch/' . (int) $previousEpisode['id'] : null,
+        'nextUrl' => $showNext && $nextEpisode ? '/watch/' . (int) $nextEpisode['id'] : null,
+        'showPreview' => $showPreview,
+        'brandName' => $brandName,
+        'poster' => $video['poster_url'],
+    ];
+
+    $seasonsPayload = [];
+    foreach ($seasons as $seasonNumber => $seasonEpisodes) {
+        $seasonsPayload[(string) $seasonNumber] = array_map(
+            static function (array $episode): array {
+                return [
+                    'id' => (int) $episode['id'],
+                    'url' => '/watch/' . (int) $episode['id'],
+                    'episode_number' => (int) $episode['episode_number'],
+                    'title' => (string) $episode['title'],
+                    'label' => episode_option_label($episode),
+                ];
+            },
+            $seasonEpisodes,
+        );
+    }
+
+    if (is_pjax_request()) {
+        header('Content-Type: application/json; charset=UTF-8');
+        header('Cache-Control: no-store');
+        echo json_encode([
+            'url' => '/watch/' . (int) $video['id'],
+            'documentTitle' => ($video['title'] ?? $config['app_name']) . ' — ' . $config['app_name'],
+            'heading' => $video['title'],
+            'seriesTitle' => $video['series_title'] ?: $video['title'],
+            'meta' => $video['series_title']
+                ? sprintf(
+                    '%s · Сезон %d · Серия %d',
+                    $video['series_title'],
+                    (int) $video['season_number'],
+                    (int) $video['episode_number'],
+                )
+                : '',
+            'description' => (string) $video['description'],
+            'seasonNumber' => (int) $video['season_number'],
+            'episodeId' => (int) $video['id'],
+            'seasons' => $seasonsPayload,
+            'showNextControls' => $showNext,
+            'previousUrl' => $playerConfig['previousUrl'],
+            'nextUrl' => $playerConfig['nextUrl'],
+            'nextTitle' => $nextEpisode['title'] ?? null,
+            'player' => $playerConfig,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        exit;
+    }
+
     render('watch', [
         'title' => $video['title'],
         'video' => $video,
         'episodes' => $episodes,
         'seasons' => $seasons,
+        'previousEpisode' => $previousEpisode,
         'nextEpisode' => $nextEpisode,
         'settings' => $settings,
+        'playerConfig' => $playerConfig,
+        'showQuality' => $showQuality,
+        'showVolume' => $showVolume,
+        'showFullscreen' => $showFullscreen,
+        'showNext' => $showNext,
+        'showPreview' => $showPreview,
+        'brandName' => $brandName,
     ]);
 }
 
@@ -189,12 +275,18 @@ if ($method === 'GET' && $path === '/admin') {
         $tab = 'content';
     }
     $videos = $pdo->query(
-        'SELECT videos.*, series.title AS series_title
+        'SELECT videos.*, series.title AS series_title,
+                series.description AS series_description,
+                series_seasons.title AS season_title,
+                series_seasons.description AS season_description
          FROM videos
          LEFT JOIN series ON series.id = videos.series_id
+         LEFT JOIN series_seasons
+           ON series_seasons.series_id = videos.series_id
+          AND series_seasons.season_number = videos.season_number
          ORDER BY videos.created_at DESC'
     )->fetchAll();
-    $series = $pdo->query('SELECT id, title FROM series ORDER BY title')->fetchAll();
+    $series = $pdo->query('SELECT id, title, description FROM series ORDER BY title')->fetchAll();
     $hasQueued = (bool) array_filter(
         $videos,
         static fn (array $video): bool => in_array($video['status'], ['queued', 'processing'], true),
@@ -469,6 +561,17 @@ if ($method === 'POST' && $path === '/admin/videos') {
             }
         }
 
+        if ($seriesId !== null) {
+            $seasonStatement = $pdo->prepare(
+                'INSERT OR IGNORE INTO series_seasons (series_id, season_number)
+                 VALUES (:series_id, :season_number)'
+            );
+            $seasonStatement->execute([
+                'series_id' => $seriesId,
+                'season_number' => $seasonNumber,
+            ]);
+        }
+
         $statement = $pdo->prepare(
             'INSERT INTO videos (
                 title, description, original_name, source_path,
@@ -500,6 +603,204 @@ if ($method === 'POST' && $path === '/admin/videos') {
     flash('success', 'Видео загружено и поставлено в очередь.');
     if (!ensure_worker_running($config)) {
         flash('error', 'Не удалось автоматически запустить воркер. Проверьте права на storage/ и PATH для PHP/FFmpeg.');
+    }
+    redirect('/admin');
+}
+
+if ($method === 'POST' && preg_match('#^/admin/series/(\d+)$#', $path, $matches)) {
+    require_admin();
+    verify_csrf();
+    $seriesId = (int) $matches[1];
+    $title = trim((string) ($_POST['title'] ?? ''));
+    $description = trim((string) ($_POST['description'] ?? ''));
+
+    if ($title === '' || mb_strlen($title) > 180 || mb_strlen($description) > 5000) {
+        flash('error', 'Проверьте название и описание сериала.');
+        redirect('/admin');
+    }
+
+    $duplicate = $pdo->prepare('SELECT id FROM series WHERE title = :title AND id != :id');
+    $duplicate->execute(['title' => $title, 'id' => $seriesId]);
+    if ($duplicate->fetchColumn() !== false) {
+        flash('error', 'Сериал с таким названием уже существует.');
+        redirect('/admin');
+    }
+
+    $statement = $pdo->prepare(
+        'UPDATE series
+         SET title = :title, description = :description, updated_at = CURRENT_TIMESTAMP
+         WHERE id = :id'
+    );
+    $statement->execute(['title' => $title, 'description' => $description, 'id' => $seriesId]);
+    flash('success', $statement->rowCount() ? 'Сериал обновлён.' : 'Сериал не найден.');
+    redirect('/admin');
+}
+
+if ($method === 'POST'
+    && preg_match('#^/admin/series/(\d+)/seasons/(\d+)$#', $path, $matches)
+) {
+    require_admin();
+    verify_csrf();
+    $seriesId = (int) $matches[1];
+    $currentNumber = max(1, (int) $matches[2]);
+    $seasonNumber = max(1, (int) ($_POST['season_number'] ?? $currentNumber));
+    $title = trim((string) ($_POST['title'] ?? ''));
+    $description = trim((string) ($_POST['description'] ?? ''));
+
+    if (mb_strlen($title) > 180 || mb_strlen($description) > 5000) {
+        flash('error', 'Название сезона должно быть до 180 символов, описание — до 5000.');
+        redirect('/admin');
+    }
+
+    try {
+        $pdo->beginTransaction();
+        $seriesLookup = $pdo->prepare('SELECT id FROM series WHERE id = :id');
+        $seriesLookup->execute(['id' => $seriesId]);
+        if ($seriesLookup->fetchColumn() === false) {
+            throw new RuntimeException('Сериал не найден.');
+        }
+
+        if ($seasonNumber !== $currentNumber) {
+            $targetLookup = $pdo->prepare(
+                'SELECT 1
+                 FROM videos
+                 WHERE series_id = :series_id AND season_number = :season_number
+                 UNION ALL
+                 SELECT 1
+                 FROM series_seasons
+                 WHERE series_id = :series_id AND season_number = :season_number
+                 LIMIT 1'
+            );
+            $targetLookup->execute([
+                'series_id' => $seriesId,
+                'season_number' => $seasonNumber,
+            ]);
+            if ($targetLookup->fetchColumn() !== false) {
+                throw new RuntimeException("Сезон {$seasonNumber} уже существует.");
+            }
+
+            $moveVideos = $pdo->prepare(
+                'UPDATE videos
+                 SET season_number = :new_number, updated_at = CURRENT_TIMESTAMP
+                 WHERE series_id = :series_id AND season_number = :current_number'
+            );
+            $moveVideos->execute([
+                'new_number' => $seasonNumber,
+                'series_id' => $seriesId,
+                'current_number' => $currentNumber,
+            ]);
+        }
+
+        $deleteOld = $pdo->prepare(
+            'DELETE FROM series_seasons
+             WHERE series_id = :series_id AND season_number = :current_number'
+        );
+        $deleteOld->execute(['series_id' => $seriesId, 'current_number' => $currentNumber]);
+        $saveSeason = $pdo->prepare(
+            'INSERT INTO series_seasons (series_id, season_number, title, description)
+             VALUES (:series_id, :season_number, :title, :description)
+             ON CONFLICT(series_id, season_number) DO UPDATE SET
+                title = excluded.title,
+                description = excluded.description,
+                updated_at = CURRENT_TIMESTAMP'
+        );
+        $saveSeason->execute([
+            'series_id' => $seriesId,
+            'season_number' => $seasonNumber,
+            'title' => $title,
+            'description' => $description,
+        ]);
+        $pdo->commit();
+        flash('success', 'Сезон обновлён.');
+    } catch (Throwable $exception) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        flash('error', $exception->getMessage());
+    }
+    redirect('/admin');
+}
+
+if ($method === 'POST' && preg_match('#^/admin/videos/(\d+)$#', $path, $matches)) {
+    require_admin();
+    verify_csrf();
+    $videoId = (int) $matches[1];
+    $title = trim((string) ($_POST['title'] ?? ''));
+    $description = trim((string) ($_POST['description'] ?? ''));
+
+    if ($title === '' || mb_strlen($title) > 180 || mb_strlen($description) > 5000) {
+        flash('error', 'Проверьте название и описание видео.');
+        redirect('/admin');
+    }
+
+    $lookup = $pdo->prepare('SELECT id, series_id, season_number, episode_number FROM videos WHERE id = :id');
+    $lookup->execute(['id' => $videoId]);
+    $video = $lookup->fetch();
+    if (!$video) {
+        flash('error', 'Видео не найдено.');
+        redirect('/admin');
+    }
+
+    $seasonNumber = (int) $video['season_number'];
+    $episodeNumber = $video['episode_number'] !== null ? (int) $video['episode_number'] : null;
+    if ($video['series_id'] !== null) {
+        $seasonNumber = max(1, (int) ($_POST['season_number'] ?? $seasonNumber));
+        $episodeNumber = max(1, (int) ($_POST['episode_number'] ?? $episodeNumber));
+        $duplicate = $pdo->prepare(
+            'SELECT id FROM videos
+             WHERE series_id = :series_id
+               AND season_number = :season_number
+               AND episode_number = :episode_number
+               AND id != :id
+             LIMIT 1'
+        );
+        $duplicate->execute([
+            'series_id' => (int) $video['series_id'],
+            'season_number' => $seasonNumber,
+            'episode_number' => $episodeNumber,
+            'id' => $videoId,
+        ]);
+        if ($duplicate->fetchColumn() !== false) {
+            flash('error', "Сезон {$seasonNumber}, серия {$episodeNumber} уже существуют.");
+            redirect('/admin');
+        }
+    }
+
+    try {
+        $pdo->beginTransaction();
+        if ($video['series_id'] !== null) {
+            $seasonStatement = $pdo->prepare(
+                'INSERT OR IGNORE INTO series_seasons (series_id, season_number)
+                 VALUES (:series_id, :season_number)'
+            );
+            $seasonStatement->execute([
+                'series_id' => (int) $video['series_id'],
+                'season_number' => $seasonNumber,
+            ]);
+        }
+        $statement = $pdo->prepare(
+            'UPDATE videos
+             SET title = :title,
+                 description = :description,
+                 season_number = :season_number,
+                 episode_number = :episode_number,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id'
+        );
+        $statement->execute([
+            'title' => $title,
+            'description' => $description,
+            'season_number' => $seasonNumber,
+            'episode_number' => $episodeNumber,
+            'id' => $videoId,
+        ]);
+        $pdo->commit();
+        flash('success', $video['series_id'] !== null ? 'Серия обновлена.' : 'Видео обновлено.');
+    } catch (Throwable $exception) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        flash('error', 'Не удалось сохранить изменения: ' . $exception->getMessage());
     }
     redirect('/admin');
 }

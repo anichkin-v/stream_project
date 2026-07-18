@@ -7,6 +7,24 @@ function e(?string $value): string
     return htmlspecialchars($value ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+function is_pjax_request(): bool
+{
+    return (($_GET['pjax'] ?? '') === '1')
+        || (($_SERVER['HTTP_X_PJAX'] ?? '') === '1');
+}
+
+function episode_option_label(array $episode): string
+{
+    $episodeNumber = (int) ($episode['episode_number'] ?? 0);
+    $episodeTitle = trim((string) ($episode['title'] ?? ''));
+    $isGenericTitle = $episodeTitle === ''
+        || $episodeTitle === (string) $episodeNumber
+        || preg_match('/^серия\s*' . $episodeNumber . '$/iu', $episodeTitle) === 1
+        || preg_match('/^серия\s*\d+$/iu', $episodeTitle) === 1;
+
+    return $episodeNumber . ' · ' . ($isGenericTitle ? 'Серия' : $episodeTitle);
+}
+
 function asset_url(string $path): string
 {
     global $config;

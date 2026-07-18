@@ -20,6 +20,17 @@ function ensure_schema(PDO $pdo): void
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS series_seasons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+        season_number INTEGER NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(series_id, season_number)
+    );
+
     CREATE TABLE IF NOT EXISTS videos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
@@ -52,6 +63,8 @@ function ensure_schema(PDO $pdo): void
     );
 
     CREATE INDEX IF NOT EXISTS videos_status_idx ON videos(status);
+    CREATE INDEX IF NOT EXISTS series_seasons_series_idx
+        ON series_seasons(series_id, season_number);
     SQL);
 
     $columns = [];
@@ -82,6 +95,12 @@ function ensure_schema(PDO $pdo): void
     $pdo->exec(
         'CREATE INDEX IF NOT EXISTS videos_series_idx
          ON videos(series_id, season_number, episode_number)'
+    );
+    $pdo->exec(
+        'INSERT OR IGNORE INTO series_seasons (series_id, season_number)
+         SELECT DISTINCT series_id, season_number
+         FROM videos
+         WHERE series_id IS NOT NULL'
     );
 
     $defaults = [

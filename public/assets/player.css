@@ -70,43 +70,46 @@
     border-color: var(--player-accent);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--player-accent) 30%, transparent);
 }
-.player-safe-badge {
-    flex: 0 0 auto;
-    padding: 7px 10px;
-    border: 1px solid rgba(255,255,255,.18);
-    border-radius: 999px;
-    background: rgba(0, 0, 0, .55);
-    font-size: 12px;
-    font-weight: 750;
-    backdrop-filter: blur(8px);
-}
 
 .player-center-play {
+    --play-tilt: 8deg;
     position: absolute;
     left: 50%;
     top: 46%;
     z-index: 5;
     display: grid;
     place-items: center;
-    width: 86px;
-    height: 86px;
-    padding: 0 0 0 4px;
+    width: 92px;
+    height: 92px;
+    padding: 0 0 2px 5px;
     border: 0;
-    border-radius: 50%;
+    border-radius: 62% 38% 58% 42% / 48% 56% 44% 52%;
     color: #fff;
-    background: var(--player-accent);
-    box-shadow: 0 16px 40px color-mix(in srgb, var(--player-accent) 42%, transparent);
+    background: linear-gradient(
+        145deg,
+        color-mix(in srgb, var(--player-accent) 88%, #ff9a72) 0%,
+        var(--player-accent) 48%,
+        color-mix(in srgb, var(--player-accent) 72%, #ff7a3d) 100%
+    );
+    box-shadow: 0 18px 42px color-mix(in srgb, var(--player-accent) 38%, transparent);
     cursor: pointer;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%) rotate(var(--play-tilt));
     transition: opacity .2s, transform .2s;
     animation: player-center-pulse 5s ease-in-out infinite;
 }
-.player-center-play:hover { transform: translate(-50%, -50%) scale(1.06); }
-.player-center-play svg { width: 34px; height: 34px; }
+.player-center-play:hover {
+    transform: translate(-50%, -50%) rotate(var(--play-tilt)) scale(1.07);
+}
+.player-center-play svg {
+    width: 30px;
+    height: 30px;
+    transform: rotate(calc(var(--play-tilt) * -0.15));
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .08));
+}
 .kids-player.is-playing .player-center-play { opacity: 0; pointer-events: none; animation: none; }
 @keyframes player-center-pulse {
-    0%, 86%, 100% { transform: translate(-50%, -50%) scale(1); }
-    93% { transform: translate(-50%, -50%) scale(1.07); }
+    0%, 86%, 100% { transform: translate(-50%, -50%) rotate(var(--play-tilt)) scale(1); }
+    93% { transform: translate(-50%, -50%) rotate(var(--play-tilt)) scale(1.08); }
 }
 
 .player-buffer {
@@ -138,28 +141,36 @@
     background: rgba(0, 0, 0, .94);
 }
 
-/* MoVix-style bottom dock */
+/* Таймлайн поверх видео, чёрный док только под кнопками */
 .player-controls {
     position: absolute;
     inset: auto 0 0;
     z-index: 7;
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 4px 8px;
-    min-height: 58px;
-    padding: 6px 10px calc(8px + env(safe-area-inset-bottom, 0px));
-    background: #000;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    background: transparent;
     transition: transform .28s ease, opacity .2s ease;
 }
 
 .player-timeline {
-    flex: 1 1 100%;
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 2px 2px 4px;
+    padding: 18px 14px 10px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, .42));
+}
+
+.player-dock {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 52px;
+    padding: 4px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: #000;
 }
 
 .player-time-label {
@@ -255,12 +266,12 @@
 .player-controls__center {
     position: absolute;
     left: 50%;
-    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    top: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    transform: translateX(-50%);
+    transform: translate(-50%, -50%);
 }
 
 .player-brand {
@@ -315,6 +326,7 @@
     width: 1.95rem;
     height: 1.95rem;
 }
+.player-btn--prev svg,
 .player-btn--next svg {
     width: 1.85rem;
     height: 1.85rem;
@@ -497,14 +509,14 @@
         margin-left: -16px;
     }
     .player-title-bar { padding: 12px 12px 36px; }
-    .player-safe-badge,
     .player-title-bar small,
     .player-controls__center,
     .player-volume-range { display: none; }
     .player-series-selectors { gap: 5px; }
     .player-series-selectors label span { display: none; }
-    .player-series-selectors select { max-width: 125px; height: 28px; font-size: 11px; }
-    .player-controls { padding: 4px 4px calc(6px + env(safe-area-inset-bottom, 0px)); }
+    .player-series-selectors select { max-width: 140px; height: 28px; font-size: 11px; }
+    .player-timeline { padding: 14px 10px 8px; }
+    .player-dock { padding: 2px 4px calc(6px + env(safe-area-inset-bottom, 0px)); }
     .player-btn { width: 40px; height: 40px; }
     .player-btn--play { width: 46px; }
     .player-time-label { font-size: 11px; min-width: 2rem; }
