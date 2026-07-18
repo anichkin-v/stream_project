@@ -1,0 +1,9 @@
+{
+    "name": "kidstub/video-platform",
+    "description": "KidsTub video platform storage integrations",
+    "type": "project",
+    "require": {
+        "php": ">=8.2",
+        "aws/aws-sdk-php": "^3.0"
+    }
+}

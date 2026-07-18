@@ -8,7 +8,8 @@ $flashes = take_flashes();
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($title ?? $config['app_name']) ?> — <?= e($config['app_name']) ?></title>
-    <link rel="stylesheet" href="/assets/style.css">
+    <link rel="stylesheet" href="<?= e(asset_url('assets/style.css')) ?>">
+    <link rel="stylesheet" href="<?= e(asset_url('assets/player.css')) ?>">
 </head>
 <body>
 <header class="site-header">

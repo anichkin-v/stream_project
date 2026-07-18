@@ -26,7 +26,7 @@ apt-get install -y \
     nginx \
     "php${PHP_VERSION}-fpm" "php${PHP_VERSION}-cli" "php${PHP_VERSION}-sqlite3" \
     "php${PHP_VERSION}-mbstring" "php${PHP_VERSION}-curl" \
-    ffmpeg
+    ffmpeg composer
 
 echo "==> Синхронизация файлов проекта в $PROJECT_DIR"
 mkdir -p "$PROJECT_DIR"
@@ -45,12 +45,42 @@ if [[ "$SCRIPT_DIR" != "$PROJECT_DIR" ]]; then
 fi
 
 echo "==> Подготовка каталогов и прав"
-mkdir -p "$PROJECT_DIR/storage/uploads" "$PROJECT_DIR/public/media"
+mkdir -p "$PROJECT_DIR/storage/uploads" "$PROJECT_DIR/storage/sessions" "$PROJECT_DIR/public/media"
 chown -R "$DEPLOY_USER:$DEPLOY_GROUP" "$PROJECT_DIR"
 chmod -R 775 "$PROJECT_DIR/storage" "$PROJECT_DIR/public/media"
 
+echo "==> Установка PHP-зависимостей"
+sudo -u "$DEPLOY_USER" env COMPOSER_HOME=/tmp/kidstub-composer \
+    composer install --working-dir="$PROJECT_DIR" --no-dev --optimize-autoloader --no-interaction
+
 # Nginx/PHP-FPM (www-data) должны иметь право прохода к каталогу проекта в /home.
 chmod o+x /home /home/web_deploy /home/web_deploy/web /home/web_deploy/web/public 2>/dev/null || true
+
+echo "==> Проверка SQLite"
+DB_FILE="$PROJECT_DIR/storage/database.sqlite"
+systemctl stop stream-worker 2>/dev/null || true
+if [[ -f "$DB_FILE" ]]; then
+    if ! sudo -u "$DEPLOY_USER" php -r '
+        try {
+            $pdo = new PDO("sqlite:" . $argv[1], null, null, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            ]);
+            $pdo->query("SELECT count(*) FROM sqlite_master")->fetchColumn();
+            exit(0);
+        } catch (Throwable $e) {
+            fwrite(STDERR, $e->getMessage() . PHP_EOL);
+            exit(1);
+        }
+    ' "$DB_FILE"; then
+        STAMP="$(date +%Y%m%d-%H%M%S)"
+        echo "    База повреждена — сохраняю бэкап и создаю новую."
+        mv "$DB_FILE" "$DB_FILE.broken-$STAMP"
+        rm -f "$DB_FILE-wal" "$DB_FILE-shm"
+        chown "$DEPLOY_USER:$DEPLOY_GROUP" "$DB_FILE.broken-$STAMP" 2>/dev/null || true
+    else
+        echo "    База в порядке."
+    fi
+fi
 
 echo "==> Инициализация базы данных"
 sudo -u "$DEPLOY_USER" php "$PROJECT_DIR/bin/init-db.php"

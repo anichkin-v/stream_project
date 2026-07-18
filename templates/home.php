@@ -2,7 +2,7 @@
     <div class="hero-content">
         <p class="eyebrow">Безопасное пространство</p>
         <h1>Смотри, узнавай,<br><span>расти с улыбкой</span></h1>
-        <p>Добрые мультфильмы и познавательные видео, которые заранее выбрали взрослые.</p>
+        <p><?= e($settings['site_tagline'] ?? 'Добрые мультфильмы и познавательные видео.') ?></p>
         <?php if ($videos): ?>
             <a class="button hero-button" href="#videos">Смотреть видео <span>→</span></a>
         <?php endif; ?>
@@ -44,9 +44,9 @@
         <div class="video-grid" id="video-grid">
             <?php foreach ($videos as $video): ?>
                 <a class="video-card" href="/watch/<?= (int) $video['id'] ?>"
-                   data-title="<?= e(mb_strtolower($video['title'])) ?>">
+                   data-title="<?= e(mb_strtolower($video['title'] . ' ' . $video['description'])) ?>">
                     <div class="video-preview">
-                        <img src="/media/<?= (int) $video['id'] ?>/poster.jpg" alt="" loading="lazy"
+                        <img src="<?= e($video['poster_url']) ?>" alt="" loading="lazy"
                              onerror="this.remove()">
                         <span class="card-play">▶</span>
                         <?php if (format_duration((float) $video['duration_seconds']) !== ''): ?>
@@ -54,6 +54,12 @@
                         <?php endif; ?>
                     </div>
                     <div class="video-card-body">
+                        <?php if ($video['series_title']): ?>
+                            <span class="video-series-label">
+                                Сериал · сезонов: <?= (int) $video['season_count'] ?>
+                                · серий: <?= (int) $video['episode_count'] ?>
+                            </span>
+                        <?php endif; ?>
                         <h3><?= e($video['title']) ?></h3>
                         <?php if ($video['description'] !== ''): ?>
                             <p><?= e(mb_strimwidth($video['description'], 0, 120, '…')) ?></p>

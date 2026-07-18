@@ -7,6 +7,16 @@ function e(?string $value): string
     return htmlspecialchars($value ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+function asset_url(string $path): string
+{
+    global $config;
+
+    $publicPath = $config['paths']['root'] . '/public/' . ltrim($path, '/');
+    $version = is_file($publicPath) ? (string) filemtime($publicPath) : '1';
+
+    return '/' . ltrim($path, '/') . '?v=' . rawurlencode($version);
+}
+
 function render(string $template, array $data = []): never
 {
     global $config;
@@ -121,4 +131,31 @@ function delete_tree(string $directory): bool
     }
 
     return @rmdir($directory) && $success;
+}
+
+function load_settings(PDO $pdo): array
+{
+    $settings = [];
+    foreach ($pdo->query('SELECT setting_key, setting_value FROM settings')->fetchAll() as $row) {
+        $settings[$row['setting_key']] = $row['setting_value'];
+    }
+
+    return $settings;
+}
+
+function save_settings(PDO $pdo, array $settings): void
+{
+    $statement = $pdo->prepare(
+        'INSERT INTO settings (setting_key, setting_value, updated_at)
+         VALUES (:key, :value, CURRENT_TIMESTAMP)
+         ON CONFLICT(setting_key) DO UPDATE SET
+            setting_value = excluded.setting_value,
+            updated_at = CURRENT_TIMESTAMP'
+    );
+    foreach ($settings as $key => $value) {
+        $statement->execute([
+            'key' => (string) $key,
+            'value' => (string) $value,
+        ]);
+    }
 }

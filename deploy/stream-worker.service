@@ -9,6 +9,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=/home/web_deploy/web/public/stream
 ExecStart=/usr/bin/php /home/web_deploy/web/public/stream/bin/worker.php
+EnvironmentFile=-/etc/kidstub/storage.env
 Restart=always
 RestartSec=3
 Nice=10
